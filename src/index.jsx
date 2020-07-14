@@ -124,6 +124,7 @@ export default class DatePicker extends React.Component {
     calendarContainer: PropTypes.func,
     children: PropTypes.node,
     chooseDayAriaLabelPrefix: PropTypes.string,
+    closeOnScroll: PropTypes.oneOfType([PropTypes.bool, PropTypes.func]),
     className: PropTypes.string,
     customInput: PropTypes.element,
     customInputRef: PropTypes.string,
@@ -189,6 +190,7 @@ export default class DatePicker extends React.Component {
     selected: PropTypes.instanceOf(Date),
     selectsEnd: PropTypes.bool,
     selectsStart: PropTypes.bool,
+    selectsRange: PropTypes.bool,
     showMonthDropdown: PropTypes.bool,
     showPreviousMonths: PropTypes.bool,
     showMonthYearDropdown: PropTypes.bool,
@@ -255,6 +257,10 @@ export default class DatePicker extends React.Component {
     this.state = this.calcInitialState();
   }
 
+  componentDidMount() {
+    window.addEventListener("scroll", this.onScroll, true);
+  }
+
   componentDidUpdate(prevProps, prevState) {
     if (
       prevProps.inline &&
@@ -293,6 +299,7 @@ export default class DatePicker extends React.Component {
 
   componentWillUnmount() {
     this.clearPreventFocusTimeout();
+    window.removeEventListener("scroll", this.onScroll, true);
   }
 
   getPreSelection = () =>
@@ -475,8 +482,13 @@ export default class DatePicker extends React.Component {
     if (changedDate !== null && isDayDisabled(changedDate, this.props)) {
       return;
     }
+    const { onChange, selectsRange, startDate, endDate } = this.props;
 
-    if (!isEqual(this.props.selected, changedDate) || this.props.allowSameDay) {
+    if (
+      !isEqual(this.props.selected, changedDate) ||
+      this.props.allowSameDay ||
+      selectsRange
+    ) {
       if (changedDate !== null) {
         if (
           this.props.selected &&
@@ -500,7 +512,25 @@ export default class DatePicker extends React.Component {
           this.setState({ monthSelectedIn: monthSelectedIn });
         }
       }
-      this.props.onChange(changedDate, event);
+      if (selectsRange) {
+        const noRanges = !startDate && !endDate;
+        const hasStartRange = startDate && !endDate;
+        const isRangeFilled = startDate && endDate;
+        if (noRanges) {
+          onChange([changedDate, null], event);
+        } else if (hasStartRange) {
+          if (isBefore(changedDate, startDate)) {
+            onChange([changedDate, null], event);
+          } else {
+            onChange([startDate, changedDate], event);
+          }
+        }
+        if (isRangeFilled) {
+          onChange([changedDate, null], event);
+        }
+      } else {
+        onChange(changedDate, event);
+      }
     }
 
     if (!keepInput) {
@@ -721,6 +751,25 @@ export default class DatePicker extends React.Component {
     this.onClearClick();
   };
 
+  onScroll = event => {
+    if (
+      typeof this.props.closeOnScroll === "boolean" &&
+      this.props.closeOnScroll
+    ) {
+      if (
+        event.target === document ||
+        event.target === document.documentElement ||
+        event.target === document.body
+      ) {
+        this.setOpen(false);
+      }
+    } else if (typeof this.props.closeOnScroll === "function") {
+      if (this.props.closeOnScroll(event)) {
+        this.setOpen(false);
+      }
+    }
+  };
+
   renderCalendar = () => {
     if (!this.props.inline && !this.isCalendarOpen()) {
       return null;
@@ -750,6 +799,7 @@ export default class DatePicker extends React.Component {
         maxDate={this.props.maxDate}
         selectsStart={this.props.selectsStart}
         selectsEnd={this.props.selectsEnd}
+        selectsRange={this.props.selectsRange}
         startDate={this.props.startDate}
         endDate={this.props.endDate}
         excludeDates={this.props.excludeDates}
